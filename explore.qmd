@@ -1,0 +1,85 @@
+---
+title: "Snyder's Aging Paper 2024"
+format: html
+---
+
+```{r}
+#| message: false
+library("ggplot2")
+library("dplyr")
+```
+
+# Read data
+
+```{r}
+#| label: readdata
+subj  = readr::read_tsv("subject.tsv", show_col_types = FALSE, comment = "#")
+visit = readr::read_tsv("visit.tsv",   show_col_types = FALSE, comment = "#")
+stopifnot(setequal(visit$SubjectID, subj$SubjectID))
+```
+
+# Subject age distribution
+
+```{r}
+table(!is.na(subj$Age))
+validsubjects = subj$SubjectID[ !is.na(subj$Age) ]
+subj  = dplyr::filter(subj,  SubjectID %in% validsubjects)
+visit = dplyr::filter(visit, SubjectID %in% validsubjects)
+```
+In the paper, they say 108.
+
+```{r}
+hist(subj$Age, 30)
+density(subj$Age, na.rm = TRUE) |> plot()
+ 
+subj$dummy = rep(1L, nrow(subj))
+ggplot(subj, aes(x = dummy, y = Age)) +
+  geom_dotplot(binaxis = "y", binwidth = 1.8, stackdir = "center", fill = "purple")
+```
+
+# Samples (visits) age distribution
+
+"We included samples only from healthy visits" - 2nd page, top right.
+
+```{r}
+table(visit$Event)
+hvisit = dplyr::filter(visit, Event == "Healthy")
+hsubj  = dplyr::filter(subj, SubjectID %in% hvisit$SubjectID)
+```
+
+```{r}
+numvisits = table(hvisit$SubjectID)
+visitsage = rep(hsubj$Age, times = numvisits[hsubj$SubjectID])
+```
+```{r}
+hist(visitsage, 50)
+density(visitsage, na.rm = TRUE) |> plot()
+```
+
+```{r}
+visitsage2 = 
+  lapply(seq_len(nrow(hsubj)), function(i) {
+    wh = (hvisit$SubjectID == hsubj$SubjectID[i])
+    offset = hvisit$CollectionDate[wh] / 365
+    hsubj$Age[i] + ifelse(is.na(offset), 0, offset)
+  }) |> unlist()
+```
+```{r}
+hist(visitsage2, 50)
+density(visitsage2, na.rm = TRUE, adjust = 1) |> plot()
+```
+
+# DE-SWAN
+
+```{r}
+age = visitsage # hsubj$Age # visitsage2
+mids = 40:70
+nvis = sapply(mids, function(m) {
+    left = ifelse( m<45, 15, 10) 
+    n1 = sum( (age >= m-left) & (age <= m)    )
+    n2 = sum( (age >  m)      & (age <= m+10) )
+    1/(1/n1+1/n2)
+  })
+df = tibble(age = mids, n = nvis)
+ggplot(df, aes(x = age, y = n)) + geom_line()
+```
